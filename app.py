@@ -51,12 +51,30 @@ def get_gps_metadata(image_path):
             return None
 
         gps_info = {}
+        date_taken = None
+        
+        # Extract all EXIF data including date and GPS info
         for tag, value in exif_data.items():
             tag_name = ExifTags.TAGS.get(tag, tag)
             if tag_name == "GPSInfo":
                 for t, val in value.items():
                     gps_tag = ExifTags.GPSTAGS.get(t, t)
                     gps_info[gps_tag] = val
+            elif tag_name in ["DateTime", "DateTimeOriginal", "DateTimeDigitized"]:
+                # Try to get the original date the photo was taken
+                try:
+                    if tag_name == "DateTimeOriginal":  # This is the preferred date
+                        date_taken = datetime.strptime(str(value), '%Y:%m:%d %H:%M:%S').strftime('%Y-%m-%d %H:%M:%S')
+                    elif not date_taken and tag_name == "DateTime":  # Fallback to DateTime
+                        date_taken = datetime.strptime(str(value), '%Y:%m:%d %H:%M:%S').strftime('%Y-%m-%d %H:%M:%S')
+                    elif not date_taken and tag_name == "DateTimeDigitized":  # Second fallback
+                        date_taken = datetime.strptime(str(value), '%Y:%m:%d %H:%M:%S').strftime('%Y-%m-%d %H:%M:%S')
+                except (ValueError, TypeError):
+                    continue
+
+        # If no date found in EXIF, fall back to file creation time
+        if not date_taken:
+            date_taken = datetime.fromtimestamp(os.path.getctime(image_path)).strftime('%Y-%m-%d %H:%M:%S')
 
         if not gps_info:
             return None
@@ -77,7 +95,7 @@ def get_gps_metadata(image_path):
                 "longitude": lon,
                 "altitude": alt,
                 "orientation": gps_info.get("GPSImgDirection", 0),
-                "date_created": datetime.fromtimestamp(os.path.getctime(image_path)).strftime('%Y-%m-%d %H:%M:%S'),
+                "date_created": date_taken,
             }
         return None
     except Exception as e:
